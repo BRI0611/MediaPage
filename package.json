@@ -1,0 +1,18 @@
+{
+  "name": "mastering-app",
+  "version": "1.0.0",
+  "description": "Browser-based MP3 mastering app packaged as Electron desktop app",
+  "main": "main.js",
+  "scripts": {
+    "start": "electron .",
+    "pack": "electron-packager . mastering-app --platform=win32 --arch=x64 --out=dist --overwrite",
+    "build": "electron-builder"
+  },
+  "author": "Brian",
+  "license": "MIT",
+  "devDependencies": {
+    "electron": "^39.2.7",
+    "electron-builder": "^24.0.0",
+    "electron-packager": "^17.0.0"
+  }
+}

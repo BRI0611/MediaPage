@@ -1,0 +1,618 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>Browser MP3 Mastering (Presets, Dark Mode, Visualizer, MP3 Export)</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <style>
+    :root {
+      --bg: #ffffff;
+      --text: #111111;
+      --panel: #f7f7f7;
+      --border: #d0d0d0;
+      --button-bg: #222;
+      --button-text: #fff;
+      --accent: #6aa9ff;
+    }
+    body.dark {
+      --bg: #121212;
+      --text: #e6e6e6;
+      --panel: #1c1c1c;
+      --border: #333333;
+      --button-bg: #2a2a2a;
+      --button-text: #f7f7f7;
+      --accent: #7cc9ff;
+    }
+    body {
+      background: var(--bg);
+      color: var(--text);
+      font-family: system-ui, -apple-system, Segoe UI, Roboto, sans-serif;
+      max-width: 960px;
+      margin: 2rem auto;
+      padding: 0 1rem;
+      transition: background 0.25s ease, color 0.25s ease;
+    }
+    h1 { font-size: 1.5rem; margin-bottom: 0.75rem; }
+    .topbar { display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem; gap: 1rem; }
+    fieldset {
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 1rem;
+      margin-bottom: 1rem;
+      background: var(--panel);
+    }
+    legend { padding: 0 0.5rem; }
+    .row { display: grid; grid-template-columns: 220px 1fr 90px; gap: 0.75rem; margin: 0.5rem 0; align-items: center; }
+    input[type="range"], input[type="text"], select { width: 100%; }
+    button { padding: 0.55rem 0.9rem; border-radius: 8px; background: var(--button-bg); color: var(--button-text); cursor: pointer; border: 1px solid var(--border); }
+    button:disabled { opacity: 0.55; cursor: not-allowed; }
+    audio { width: 100%; margin: 0.75rem 0; }
+    #visualizer { width: 100%; height: 180px; background: #000; border-radius: 8px; display: block; }
+    .small { font-size: 0.92rem; opacity: 0.85; }
+    label, select { color: var(--text); }
+    .controls-row { display: flex; gap: 0.5rem; flex-wrap: wrap; }
+  </style>
+</head>
+<body>
+  <div class="topbar">
+    <h1>Browser MP3 Mastering</h1>
+    <div class="controls-row">
+      <label>Dark <input type="checkbox" id="darkToggle" /></label>
+      <label>Visualizer:
+        <select id="vizMode">
+          <option value="bars">Bars</option>
+          <option value="wave">Waveform</option>
+        </select>
+      </label>
+    </div>
+  </div>
+
+  <fieldset>
+    <legend>1) Source</legend>
+    <div class="row">
+      <label for="file">Audio file (MP3/WAV/OGG):</label>
+      <input type="file" id="file" accept="audio/*" />
+      <button id="loadBtn">Load</button>
+    </div>
+    <audio id="player" controls></audio>
+    <div id="status"></div>
+  </fieldset>
+
+  <fieldset>
+    <legend>2) EQ</legend>
+    <div class="row"><label>Low shelf gain (dB)</label><input id="lowGain" type="range" min="-12" max="12" step="0.5" value="0"><output id="lowGainOut">0 dB</output></div>
+    <div class="row"><label>Mid frequency (Hz)</label><input id="midFreq" type="range" min="300" max="4000" step="10" value="1200"><output id="midFreqOut">1200 Hz</output></div>
+    <div class="row"><label>Mid gain (dB)</label><input id="midGain" type="range" min="-12" max="12" step="0.5" value="0"><output id="midGainOut">0 dB</output></div>
+    <div class="row"><label>High shelf gain (dB)</label><input id="highGain" type="range" min="-12" max="12" step="0.5" value="0"><output id="highGainOut">0 dB</output></div>
+    <button id="eqToggleBtn">EQ On</button>
+  </fieldset>
+
+  <fieldset>
+    <legend>3) Dynamics</legend>
+    <div class="row"><label>Compressor threshold (dB)</label><input id="compThreshold" type="range" min="-60" max="0" step="1" value="-18"><output id="compThresholdOut">-18 dB</output></div>
+    <div class="row"><label>Compressor ratio</label><input id="compRatio" type="range" min="1" max="20" step="1" value="4"><output id="compRatioOut">4:1</output></div>
+    <div class="row"><label>Attack (s)</label><input id="compAttack" type="range" min="0.001" max="0.2" step="0.001" value="0.01"><output id="compAttackOut">0.01 s</output></div>
+    <div class="row"><label>Release (s)</label><input id="compRelease" type="range" min="0.05" max="1.5" step="0.01" value="0.25"><output id="compReleaseOut">0.25 s</output></div>
+    <div class="row"><label>Output gain (dB)</label><input id="outGain" type="range" min="-12" max="12" step="0.5" value="0"><output id="outGainOut">0 dB</output></div>
+    <div class="row"><label>Limiter threshold (dBFS)</label><input id="limThreshold" type="range" min="-12" max="-0.1" step="0.1" value="-1"><output id="limThresholdOut">-1 dBFS</output></div>
+  </fieldset>
+
+  <fieldset>
+    <legend>4) Monitor</legend>
+    <div class="row">
+      <label>Peak meter</label>
+      <progress id="peakMeter" max="1" value="0" style="width:100%"></progress>
+      <output id="peakOut">0.00</output>
+    </div>
+    <canvas id="visualizer"></canvas>
+  </fieldset>
+
+  <fieldset>
+    <legend>5) Playback, presets, and export</legend>
+    <div class="controls-row">
+      <button id="playBtn" disabled>Play</button>
+      <button id="stopBtn" disabled>Stop</button>
+      <button id="autoMasterBtn">Auto Master</button>
+      <button id="recordBtn" disabled>Export MP3</button>
+    </div>
+    <div class="controls-row" style="margin-top:0.5rem">
+      <input id="presetName" type="text" placeholder="Preset name (e.g., Podcast, EDM)" />
+      <button id="saveSettingsBtn">Save Preset</button>
+      <select id="presetSelect"></select>
+      <button id="loadSettingsBtn">Load Preset</button>
+      <button id="deletePresetBtn">Delete Preset</button>
+    </div>
+   
+  </fieldset>
+
+  <!-- LameJS MP3 encoder -->
+  <script src="https://cdn.jsdelivr.net/npm/lamejs@1.2.0/lame.min.js"></script>
+
+  <script>
+    const { ipcRenderer } = require('electron');
+
+async function getAllPresets() {
+  return await ipcRenderer.invoke('get-presets');
+}
+
+async function setAllPresets(obj) {
+  await ipcRenderer.invoke('save-presets', obj);
+}
+// Audio graph state
+    let ctx, srcNode, lowShelf, midPeaking, highShelf, compressor, outGain, limiter, analyser;
+    let eqEnabled = true;
+    const player = document.getElementById('player');
+
+    const els = {
+      file: document.getElementById('file'),
+      loadBtn: document.getElementById('loadBtn'),
+      playBtn: document.getElementById('playBtn'),
+      stopBtn: document.getElementById('stopBtn'),
+      autoMasterBtn: document.getElementById('autoMasterBtn'),
+      recordBtn: document.getElementById('recordBtn'),
+      status: document.getElementById('status'),
+      peakMeter: document.getElementById('peakMeter'),
+      peakOut: document.getElementById('peakOut'),
+      lowGain: document.getElementById('lowGain'),
+      lowGainOut: document.getElementById('lowGainOut'),
+      midFreq: document.getElementById('midFreq'),
+      midFreqOut: document.getElementById('midFreqOut'),
+      midGain: document.getElementById('midGain'),
+      midGainOut: document.getElementById('midGainOut'),
+      highGain: document.getElementById('highGain'),
+      highGainOut: document.getElementById('highGainOut'),
+      compThreshold: document.getElementById('compThreshold'),
+      compThresholdOut: document.getElementById('compThresholdOut'),
+      compRatio: document.getElementById('compRatio'),
+      compRatioOut: document.getElementById('compRatioOut'),
+      compAttack: document.getElementById('compAttack'),
+      compAttackOut: document.getElementById('compAttackOut'),
+      compRelease: document.getElementById('compRelease'),
+      compReleaseOut: document.getElementById('compReleaseOut'),
+      outGain: document.getElementById('outGain'),
+      outGainOut: document.getElementById('outGainOut'),
+      limThreshold: document.getElementById('limThreshold'),
+      limThresholdOut: document.getElementById('limThresholdOut'),
+      darkToggle: document.getElementById('darkToggle'),
+      vizMode: document.getElementById('vizMode'),
+      canvas: document.getElementById('visualizer'),
+      eqToggleBtn: document.getElementById('eqToggleBtn'),
+      presetName: document.getElementById('presetName'),
+      saveSettingsBtn: document.getElementById('saveSettingsBtn'),
+      loadSettingsBtn: document.getElementById('loadSettingsBtn'),
+      deletePresetBtn: document.getElementById('deletePresetBtn'),
+      presetSelect: document.getElementById('presetSelect')
+    };
+
+    // Dark mode toggle + persist
+    els.darkToggle.addEventListener('change', () => {
+      document.body.classList.toggle('dark', els.darkToggle.checked);
+      localStorage.setItem('masteringDark', els.darkToggle.checked ? '1' : '0');
+    });
+    if (localStorage.getItem('masteringDark') === '1') {
+      els.darkToggle.checked = true;
+      document.body.classList.add('dark');
+    }
+
+    function initContext() {
+      if (!ctx) ctx = new (window.AudioContext || window.webkitAudioContext)();
+      if (!srcNode) srcNode = ctx.createMediaElementSource(player);
+
+      // Nodes
+      lowShelf = ctx.createBiquadFilter(); lowShelf.type = 'lowshelf'; lowShelf.frequency.value = 120;
+      midPeaking = ctx.createBiquadFilter(); midPeaking.type = 'peaking'; midPeaking.frequency.value = parseFloat(els.midFreq.value); midPeaking.Q.value = 1.0;
+      highShelf = ctx.createBiquadFilter(); highShelf.type = 'highshelf'; highShelf.frequency.value = 8000;
+
+      compressor = ctx.createDynamicsCompressor();
+      compressor.threshold.value = parseFloat(els.compThreshold.value);
+      compressor.ratio.value = parseFloat(els.compRatio.value);
+      compressor.attack.value = parseFloat(els.compAttack.value);
+      compressor.release.value = parseFloat(els.compRelease.value);
+
+      limiter = ctx.createDynamicsCompressor();
+      limiter.threshold.value = parseFloat(els.limThreshold.value);
+      limiter.ratio.value = 20;
+      limiter.attack.value = 0.003;
+      limiter.release.value = 0.05;
+
+      outGain = ctx.createGain();
+      outGain.gain.value = dbToGain(parseFloat(els.outGain.value));
+
+      analyser = ctx.createAnalyser();
+      analyser.fftSize = 2048;
+
+      connectChain();
+      setupVisualizer(analyser);
+      updateUI();
+    }
+
+    function connectChain() {
+      [srcNode, lowShelf, midPeaking, highShelf, compressor, limiter, outGain, analyser].forEach(n => { try { n && n.disconnect(); } catch {} });
+      if (eqEnabled) {
+        srcNode.connect(lowShelf);
+        lowShelf.connect(midPeaking);
+        midPeaking.connect(highShelf);
+        highShelf.connect(compressor);
+      } else {
+        srcNode.connect(compressor);
+      }
+      compressor.connect(limiter);
+      limiter.connect(outGain);
+      outGain.connect(analyser);
+      analyser.connect(ctx.destination);
+    }
+
+    function dbToGain(db) { return Math.pow(10, db / 20); }
+
+    function updateUI() {
+      els.lowGainOut.textContent = `${els.lowGain.value} dB`;
+      els.midFreqOut.textContent = `${els.midFreq.value} Hz`;
+      els.midGainOut.textContent = `${els.midGain.value} dB`;
+      els.highGainOut.textContent = `${els.highGain.value} dB`;
+      els.compThresholdOut.textContent = `${els.compThreshold.value} dB`;
+      els.compRatioOut.textContent = `${els.compRatio.value}:1`;
+      els.compAttackOut.textContent = `${els.compAttack.value} s`;
+      els.compReleaseOut.textContent = `${els.compRelease.value} s`;
+      els.outGainOut.textContent = `${els.outGain.value} dB`;
+      els.limThresholdOut.textContent = `${els.limThreshold.value} dBFS`;
+      els.eqToggleBtn.textContent = eqEnabled ? 'EQ On' : 'EQ Off';
+    }
+
+    // Live control bindings
+    els.lowGain.addEventListener('input', () => { if (lowShelf) lowShelf.gain.value = parseFloat(els.lowGain.value); updateUI(); });
+    els.midFreq.addEventListener('input', () => { if (midPeaking) midPeaking.frequency.value = parseFloat(els.midFreq.value); updateUI(); });
+    els.midGain.addEventListener('input', () => { if (midPeaking) midPeaking.gain.value = parseFloat(els.midGain.value); updateUI(); });
+    els.highGain.addEventListener('input', () => { if (highShelf) highShelf.gain.value = parseFloat(els.highGain.value); updateUI(); });
+    els.compThreshold.addEventListener('input', () => { if (compressor) compressor.threshold.value = parseFloat(els.compThreshold.value); updateUI(); });
+    els.compRatio.addEventListener('input', () => { if (compressor) compressor.ratio.value = parseFloat(els.compRatio.value); updateUI(); });
+    els.compAttack.addEventListener('input', () => { if (compressor) compressor.attack.value = parseFloat(els.compAttack.value); updateUI(); });
+    els.compRelease.addEventListener('input', () => { if (compressor) compressor.release.value = parseFloat(els.compRelease.value); updateUI(); });
+    els.outGain.addEventListener('input', () => { if (outGain) outGain.gain.value = dbToGain(parseFloat(els.outGain.value)); updateUI(); });
+    els.limThreshold.addEventListener('input', () => { if (limiter) limiter.threshold.value = parseFloat(els.limThreshold.value); updateUI(); });
+
+    // EQ bypass toggle
+    els.eqToggleBtn.addEventListener('click', () => {
+      eqEnabled = !eqEnabled;
+      connectChain();
+      updateUI();
+      els.status.textContent = eqEnabled ? 'EQ enabled.' : 'EQ bypassed.';
+    });
+
+    // Auto Master preset
+    els.autoMasterBtn.addEventListener('click', () => {
+      els.lowGain.value = 3; if (lowShelf) lowShelf.gain.value = 3;
+      els.midFreq.value = 1200; if (midPeaking) midPeaking.frequency.value = 1200;
+      els.midGain.value = -2; if (midPeaking) midPeaking.gain.value = -2;
+      els.highGain.value = 2; if (highShelf) highShelf.gain.value = 2;
+      els.compThreshold.value = -20; if (compressor) compressor.threshold.value = -20;
+      els.compRatio.value = 3; if (compressor) compressor.ratio.value = 3;
+      els.compAttack.value = 0.01; if (compressor) compressor.attack.value = 0.01;
+      els.compRelease.value = 0.30; if (compressor) compressor.release.value = 0.30;
+      els.limThreshold.value = -1; if (limiter) limiter.threshold.value = -1;
+      els.outGain.value = 2; if (outGain) outGain.gain.value = dbToGain(2);
+      updateUI();
+      els.status.textContent = 'Auto Master applied: balanced preset.';
+    });
+
+    // Preset utilities (multiple presets stored in masteringPresets dict)
+    function getAllPresets() {
+      try { return JSON.parse(localStorage.getItem('masteringPresets') || '{}'); }
+      catch { return {}; }
+    }
+    function setAllPresets(obj) {
+      localStorage.setItem('masteringPresets', JSON.stringify(obj || {}));
+    }
+    function refreshPresetList() {
+      const all = getAllPresets();
+      els.presetSelect.innerHTML = '';
+      const names = Object.keys(all).sort();
+      names.forEach(name => {
+        const opt = document.createElement('option');
+        opt.value = name; opt.textContent = name;
+        els.presetSelect.appendChild(opt);
+      });
+      if (names.length === 0) {
+        const opt = document.createElement('option');
+        opt.value = ''; opt.textContent = '(no presets)';
+        els.presetSelect.appendChild(opt);
+      }
+    }
+
+    function savePreset() {
+      const name = els.presetName.value.trim();
+      if (!name) { els.status.textContent = 'Enter a preset name.'; return; }
+      const settings = {
+        lowGain: els.lowGain.value,
+        midFreq: els.midFreq.value,
+        midGain: els.midGain.value,
+        highGain: els.highGain.value,
+        compThreshold: els.compThreshold.value,
+        compRatio: els.compRatio.value,
+        compAttack: els.compAttack.value,
+        compRelease: els.compRelease.value,
+        outGain: els.outGain.value,
+        limThreshold: els.limThreshold.value,
+        eqEnabled: eqEnabled ? '1' : '0'
+      };
+      const all = getAllPresets();
+      all[name] = settings;
+      setAllPresets(all);
+      refreshPresetList();
+      els.presetSelect.value = name;
+      els.status.textContent = `Preset "${name}" saved.`;
+    }
+
+    function loadPreset() {
+      const name = els.presetSelect.value;
+      if (!name) { els.status.textContent = 'No preset selected.'; return; }
+      const all = getAllPresets();
+      const s = all[name];
+      if (!s) { els.status.textContent = 'Preset not found.'; return; }
+      if (!ctx) initContext();
+
+      els.lowGain.value = s.lowGain; lowShelf.gain.value = Number(s.lowGain);
+      els.midFreq.value = s.midFreq; midPeaking.frequency.value = Number(s.midFreq);
+      els.midGain.value = s.midGain; midPeaking.gain.value = Number(s.midGain);
+      els.highGain.value = s.highGain; highShelf.gain.value = Number(s.highGain);
+      els.compThreshold.value = s.compThreshold; compressor.threshold.value = Number(s.compThreshold);
+      els.compRatio.value = s.compRatio; compressor.ratio.value = Number(s.compRatio);
+      els.compAttack.value = s.compAttack; compressor.attack.value = Number(s.compAttack);
+      els.compRelease.value = s.compRelease; compressor.release.value = Number(s.compRelease);
+      els.outGain.value = s.outGain; outGain.gain.value = dbToGain(Number(s.outGain));
+      els.limThreshold.value = s.limThreshold; limiter.threshold.value = Number(s.limThreshold);
+      eqEnabled = s.eqEnabled === '1';
+      connectChain();
+      updateUI();
+      els.status.textContent = `Preset "${name}" loaded.`;
+    }
+
+    function deletePreset() {
+      const name = els.presetSelect.value;
+      if (!name) { els.status.textContent = 'No preset selected to delete.'; return; }
+      const all = getAllPresets();
+      if (!all[name]) { els.status.textContent = 'Preset not found.'; return; }
+      delete all[name];
+      setAllPresets(all);
+      refreshPresetList();
+      els.status.textContent = `Preset "${name}" deleted.`;
+    }
+
+    // Bind preset buttons
+    els.saveSettingsBtn.addEventListener('click', savePreset);
+    els.loadSettingsBtn.addEventListener('click', loadPreset);
+    els.deletePresetBtn.addEventListener('click', deletePreset);
+
+    // Load file to <audio>
+    els.loadBtn.addEventListener('click', () => {
+      const file = els.file.files?.[0];
+      if (!file) { els.status.textContent = 'Select an audio file first.'; return; }
+      const url = URL.createObjectURL(file);
+      player.src = url;
+      if (!ctx) initContext();
+      updateUI();
+      els.playBtn.disabled = false;
+      els.stopBtn.disabled = false;
+      els.recordBtn.disabled = false;
+      els.status.textContent = `Loaded: ${file.name}`;
+    });
+
+    // Play/Stop
+    els.playBtn.addEventListener('click', async () => {
+      if (!ctx) initContext();
+      try { await ctx.resume(); } catch {}
+      player.currentTime = 0;
+      player.play();
+      startPeakMeter();
+      els.status.textContent = 'Playing processed audio…';
+    });
+    els.stopBtn.addEventListener('click', () => {
+      player.pause();
+      stopPeakMeter();
+      els.status.textContent = 'Stopped.';
+    });
+
+    // MP3 export via OfflineAudioContext + lamejs (mirrors live settings and EQ bypass)
+    els.recordBtn.addEventListener('click', async () => {
+      if (!ctx) initContext();
+      const file = els.file.files?.[0];
+      if (!file) { els.status.textContent = 'Load an audio file first.'; return; }
+      els.status.textContent = 'Preparing MP3 export…';
+
+      const arrayBuf = await file.arrayBuffer();
+      const srcBuf = await ctx.decodeAudioData(arrayBuf);
+
+      const sampleRate = srcBuf.sampleRate;
+      const offline = new OfflineAudioContext(srcBuf.numberOfChannels, srcBuf.length, sampleRate);
+
+      const source = offline.createBufferSource();
+      source.buffer = srcBuf;
+
+      // Mirror live settings into offline nodes
+      const oLow = offline.createBiquadFilter(); oLow.type = 'lowshelf'; oLow.frequency.value = 120; oLow.gain.value = parseFloat(els.lowGain.value);
+      const oMid = offline.createBiquadFilter(); oMid.type = 'peaking'; oMid.frequency.value = parseFloat(els.midFreq.value); oMid.Q.value = 1.0; oMid.gain.value = parseFloat(els.midGain.value);
+      const oHigh = offline.createBiquadFilter(); oHigh.type = 'highshelf'; oHigh.frequency.value = 8000; oHigh.gain.value = parseFloat(els.highGain.value);
+
+      const oComp = offline.createDynamicsCompressor();
+      oComp.threshold.value = parseFloat(els.compThreshold.value);
+      oComp.ratio.value = parseFloat(els.compRatio.value);
+      oComp.attack.value = parseFloat(els.compAttack.value);
+      oComp.release.value = parseFloat(els.compRelease.value);
+
+      const oLim = offline.createDynamicsCompressor();
+      oLim.threshold.value = parseFloat(els.limThreshold.value);
+      oLim.ratio.value = 20;
+      oLim.attack.value = 0.003;
+      oLim.release.value = 0.05;
+
+      const oGain = offline.createGain();
+      oGain.gain.value = dbToGain(parseFloat(els.outGain.value));
+
+      // Connect chain honoring EQ bypass
+      if (eqEnabled) {
+        source.connect(oLow);
+        oLow.connect(oMid);
+        oMid.connect(oHigh);
+        oHigh.connect(oComp);
+      } else {
+        source.connect(oComp);
+      }
+      oComp.connect(oLim);
+      oLim.connect(oGain);
+      oGain.connect(offline.destination);
+
+      source.start();
+
+      try {
+        const rendered = await offline.startRendering();
+        els.status.textContent = 'Encoding MP3…';
+
+        const channels = rendered.numberOfChannels;
+        const left = rendered.getChannelData(0);
+        const right = channels > 1 ? rendered.getChannelData(1) : null;
+
+        function floatTo16BitPCM(float32) {
+          const out = new Int16Array(float32.length);
+          for (let i = 0; i < float32.length; i++) {
+            let s = Math.max(-1, Math.min(1, float32[i]));
+            out[i] = s < 0 ? s * 0x8000 : s * 0x7FFF;
+          }
+          return out;
+        }
+
+        const left16 = floatTo16BitPCM(left);
+        const right16 = right ? floatTo16BitPCM(right) : left16;
+
+        const bitrateKbps = 128; // adjust if needed
+        const mp3encoder = new lamejs.Mp3Encoder(2, sampleRate, bitrateKbps);
+        const blockSize = 1152;
+        const mp3Data = [];
+
+        for (let i = 0; i < left16.length; i += blockSize) {
+          const leftChunk = left16.subarray(i, i + blockSize);
+          const rightChunk = right16.subarray(i, i + blockSize);
+          const mp3buf = mp3encoder.encodeBuffer(leftChunk, rightChunk);
+          if (mp3buf.length > 0) mp3Data.push(mp3buf);
+        }
+        const end = mp3encoder.flush();
+        if (end.length > 0) mp3Data.push(end);
+
+        const blob = new Blob(mp3Data, { type: 'audio/mpeg' });
+        const dlUrl = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = dlUrl;
+        a.download = 'mastered_audio.mp3';
+        a.click();
+        URL.revokeObjectURL(dlUrl);
+
+        els.status.textContent = 'Export complete: mastered_audio.mp3';
+      } catch (err) {
+        console.error(err);
+        els.status.textContent = 'Export failed. Try a shorter file or different browser.';
+      }
+    });
+
+    // Peak meter
+    let meterRAF = null;
+    function startPeakMeter() {
+      if (!analyser) return;
+      const data = new Float32Array(analyser.fftSize);
+      const update = () => {
+        analyser.getFloatTimeDomainData(data);
+        let peak = 0;
+        for (let i = 0; i < data.length; i++) {
+          const v = Math.abs(data[i]);
+          if (v > peak) peak = v;
+        }
+        els.peakMeter.value = peak;
+        els.peakOut.textContent = peak.toFixed(3);
+        meterRAF = requestAnimationFrame(update);
+      };
+      if (!meterRAF) meterRAF = requestAnimationFrame(update);
+    }
+    function stopPeakMeter() {
+      if (meterRAF) cancelAnimationFrame(meterRAF);
+      meterRAF = null;
+      els.peakMeter.value = 0;
+      els.peakOut.textContent = '0.00';
+    }
+
+    // Visualizer
+    let vizRAF = null;
+    const canvas = els.canvas;
+    const cctx = canvas.getContext('2d');
+
+    function resizeCanvas() {
+      const dpr = Math.max(window.devicePixelRatio || 1, 1);
+      const cssW = canvas.clientWidth;
+      const cssH = canvas.clientHeight;
+      canvas.width = Math.floor(cssW * dpr);
+      canvas.height = Math.floor(cssH * dpr);
+      cctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    }
+    window.addEventListener('resize', resizeCanvas);
+    resizeCanvas();
+
+    els.vizMode.addEventListener('change', () => {
+      if (vizRAF) cancelAnimationFrame(vizRAF);
+      vizRAF = null;
+      drawVisualizer();
+    });
+
+    function setupVisualizer(analyserNode) {
+      analyser = analyserNode;
+      drawVisualizer();
+    }
+
+    function drawVisualizer() {
+      if (!analyser) return;
+      const mode = els.vizMode.value;
+      const freqLen = analyser.frequencyBinCount;
+      const freqData = new Uint8Array(freqLen);
+      const timeData = new Uint8Array(analyser.fftSize);
+
+      function draw() {
+        vizRAF = requestAnimationFrame(draw);
+        const w = canvas.clientWidth;
+        const h = canvas.clientHeight;
+        cctx.clearRect(0, 0, w, h);
+
+        if (mode === 'bars') {
+          analyser.getByteFrequencyData(freqData);
+          const barCount = Math.min(freqLen, Math.floor(w / 3));
+          const binStep = Math.floor(freqLen / barCount);
+          const barWidth = (w / barCount) - 1;
+
+          for (let i = 0, x = 0; i < barCount; i++, x += (barWidth + 1)) {
+            const idx = i * binStep;
+            const v = freqData[idx];
+            const barHeight = (v / 255) * h;
+            const r = 50 + Math.floor(205 * (v / 255));
+            const g = 120;
+            const b = 255 - Math.floor(180 * (v / 255));
+            cctx.fillStyle = `rgb(${r},${g},${b})`;
+            cctx.fillRect(x, h - barHeight, barWidth, barHeight);
+          }
+        } else {
+          analyser.getByteTimeDomainData(timeData);
+          cctx.lineWidth = 2;
+          cctx.strokeStyle = getComputedStyle(document.body).getPropertyValue('--accent').trim() || '#7cc9ff';
+          cctx.beginPath();
+          const slice = w / timeData.length;
+          for (let i = 0; i < timeData.length; i++) {
+            const v = timeData[i] / 255;
+            const y = v * h;
+            const x = i * slice;
+            if (i === 0) cctx.moveTo(x, y);
+            else cctx.lineTo(x, y);
+          }
+          cctx.stroke();
+        }
+      }
+      if (!vizRAF) vizRAF = requestAnimationFrame(draw);
+    }
+
+    // Init preset list on page load
+    refreshPresetList();async function savePreset
+  </script>
+</body>
+</html>
